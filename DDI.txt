@@ -1,0 +1,115 @@
+import json
+import requests
+import streamlit as st
+from streamlit_lottie import st_lottie
+import torch
+import pickle
+from transformers import BertTokenizer
+
+st.set_page_config(
+    page_title="DDI",
+    page_icon="🧬"
+)
+
+def load_lottieurl(url: str):
+    r = requests.get(url)
+    if r.status_code != 200:
+        return None
+    return r.json()
+
+searching = load_lottieurl("https://lottie.host/e82b4d89-e326-415a-9cbd-b1d19b0ccdb9/ME1kJJbrH3.json")
+
+st_lottie(searching,
+          height=200,
+          width=200,
+          speed=1,
+          loop=True,
+          quality='high')
+
+st.title("Drug-Drug Interactions")
+
+st.header("What is this about? 📑")
+
+st.write("This section provides the interaction class of the drugs mentioned.")
+
+st.write("A drug-drug interaction (DDI), also known as a drug interaction, occurs when two or more drugs interact with each other \
+         in a way that affects their effectiveness or leads to adverse effects when taken together. \
+         These interactions can occur when drugs are taken simultaneously or sequentially.")
+
+st.write("")
+st.write("")
+
+st.subheader("Please fill in the following details:")
+
+user_details = st.text_input("📃 Enter text")
+if not user_details:
+    st.warning("Please enter the text.")
+
+st.subheader("Enter Drug Names")
+drug1 = st.text_input("💊 Drug 1")
+drug2 = st.text_input("💊 Drug 2")
+
+# Load the BERT tokenizer
+tokenizer = BertTokenizer.from_pretrained("monologg/biobert_v1.1_pubmed")
+
+# Load the saved model
+model_pkl_file = "bert_classifier_model.pkl"  # Replace with the actual path to your saved model
+with open(model_pkl_file, 'rb') as file:
+    model = pickle.load(file)
+
+# Mapping of DDI classes to labels and descriptions
+labels = {0: 'advise', 1: 'effect', 2: 'int', 3: 'mechanism'}
+descriptions = {
+    'mechanism': 'This type is used to annotate DDIs that are described by their PK mechanism (e.g. Grepafloxacin may inhibit the metabolism of theobromine).',
+    'effect': 'This type is used to annotate DDIs describing an effect (e.g. In uninfected volunteers, 46% developed rash while receiving SUSTIVA and clarithromycin) or a PD mechanism (e.g. Chlorthalidone may potentiate the action of other antihypertensive drugs).',
+    'advise': 'This type is used when a recommendation or advice regarding a drug interaction is given (e.g. UROXATRAL should not be used in combination with other alpha-blockers).',
+    'int': 'This type is used when a DDI appears in the text without providing any additional information (e.g. The interaction of omeprazole and ketoconazole has been established).'
+}
+
+if st.button("Predict the DDI class!"):
+    if not (user_details and drug1 and drug2):
+        st.warning("Please fill in all the required details.")
+    else:
+        # Preprocess the user input
+        text = [user_details]
+
+        # Tokenize and encode the input
+        encoded_input = tokenizer(text, padding=True, truncation=True, return_tensors='pt')
+
+        # Forward pass to get the logits
+        with torch.no_grad():
+            outputs = model(**encoded_input)
+
+        # Get the predicted probabilities
+        probs = torch.softmax(outputs.logits, dim=1)
+
+        # Get the predicted class for the input
+        predicted_class = torch.argmax(probs).item()
+
+        if predicted_class in labels:
+            st.write(f"The predicted DDI class for the input is: {labels[predicted_class]}")
+            st.write(f"Description: {descriptions[labels[predicted_class]]}")
+
+
+st.write("")
+st.write("")
+st.subheader("Go back to the Home page?")
+
+def redirect_button(url: str, text: str = None, color="#FD504D"):
+    st.markdown(
+    f"""
+    <a href="{url}" target="_self">
+        <div style="
+            display: inline-block;
+            padding: 0.5em 1em;
+            color: #FFFFFF;
+            background-color: {color};
+            border-radius: 3px;
+            text-decoration: none;">
+            {text}
+        </div>
+    </a>
+    """,
+    unsafe_allow_html=True
+    )
+redirect_button("http://localhost:8501/", "Home")
